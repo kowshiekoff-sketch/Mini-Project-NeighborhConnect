@@ -242,7 +242,7 @@ def create_app() -> Flask:
             "bookings": query_one("SELECT COUNT(*) AS total FROM bookings")["total"],
             "reviews": query_one("SELECT COUNT(*) AS total FROM reviews")["total"],
         }
-        return render_template("index.html", featured=featured, stats=stats)
+        return render_template("index.html")
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
