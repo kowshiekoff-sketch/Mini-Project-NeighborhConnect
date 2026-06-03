@@ -198,8 +198,11 @@ def create_app() -> Flask:
         MAIL_PASSWORD=os.environ.get("MAIL_PASSWORD", ""),
         MAIL_FROM=os.environ.get("MAIL_FROM", "noreply@localconnect.test"),
     )
-    if str(app.config["SQLALCHEMY_DATABASE_URI"]).startswith("sqlite:///"):
-        Path(str(app.config["SQLALCHEMY_DATABASE_URI"]).replace("sqlite:///", "")).parent.mkdir(exist_ok=True)
+
+    db_uri = str(app.config["SQLALCHEMY_DATABASE_URI"])
+    if db_uri.startswith("sqlite:///"):
+        Path(db_uri.replace("sqlite:///", "")).parent.mkdir(parents=True, exist_ok=True)
+
     app.engine = create_engine(app.config["SQLALCHEMY_DATABASE_URI"], future=True)
     stripe.api_key = app.config["STRIPE_SECRET_KEY"]
     CSRFProtect(app)
@@ -212,18 +215,26 @@ def create_app() -> Flask:
         g.user = None
         user_id = session.get("user_id")
         if user_id:
-            g.user = query_one("SELECT * FROM users WHERE user_id = :user_id", {"user_id": user_id})
+            g.user = query_one(
+                "SELECT * FROM users WHERE user_id = :user_id",
+                {"user_id": user_id},
+            )
 
     @app.context_processor
     def inject_globals() -> dict:
         unread = 0
         if g.get("user"):
-            unread = query_one(
-                "SELECT COUNT(*) AS total FROM notifications WHERE user_id = :user_id AND is_read = false",
-                {"user_id": g.user["user_id"]},
-            )["total"]
+            row = query_one(
+                "SELECT COUNT(*) AS total FROM notifications WHERE user_id = :uid AND is_read = false",
+                {"uid": g.user["user_id"]},
+            )
+            if row:
+                unread = row["total"]
         return {"categories": SERVICE_CATEGORIES, "unread_notifications": unread}
 
+    # ------------------------------------------------------------------ #
+    #  HOME
+    # ------------------------------------------------------------------ #
     @app.route("/")
     def index():
         featured = query_all(
@@ -231,19 +242,22 @@ def create_app() -> Flask:
             SELECT p.*, COUNT(r.review_id) AS review_count
             FROM service_providers p
             LEFT JOIN reviews r ON r.provider_id = p.provider_id
-            WHERE p.verified = true
+            WHERE p.verified = 1
             GROUP BY p.provider_id
             ORDER BY p.rating DESC, review_count DESC
             LIMIT 6
             """
         )
         stats = {
-            "providers": query_one("SELECT COUNT(*) AS total FROM service_providers WHERE verified = true")["total"],
-            "bookings": query_one("SELECT COUNT(*) AS total FROM bookings")["total"],
-            "reviews": query_one("SELECT COUNT(*) AS total FROM reviews")["total"],
+            "providers": (query_one("SELECT COUNT(*) AS total FROM service_providers WHERE verified = 1") or {}).get("total", 0),
+            "bookings":  (query_one("SELECT COUNT(*) AS total FROM bookings") or {}).get("total", 0),
+            "reviews":   (query_one("SELECT COUNT(*) AS total FROM reviews") or {}).get("total", 0),
         }
-        return render_template("index.html")
+        return render_template("index.html", featured=featured, stats=stats)
 
+    # ------------------------------------------------------------------ #
+    #  AUTH
+    # ------------------------------------------------------------------ #
     @app.route("/register", methods=["GET", "POST"])
     def register():
         if request.method == "POST":
@@ -308,7 +322,7 @@ def create_app() -> Flask:
             email = request.form.get("email", "").strip().lower()
             password = request.form.get("password", "")
             user = query_one(
-                "SELECT * FROM users WHERE email = :email AND is_active = true",
+                "SELECT * FROM users WHERE email = :email AND is_active = 1",
                 {"email": email},
             )
             if user and check_password_hash(user["password"], password):
@@ -386,6 +400,9 @@ def create_app() -> Flask:
             flash("If the email exists, password reset instructions were sent.", "success")
         return render_template("auth/reset.html", demo_code=dev_code)
 
+    # ------------------------------------------------------------------ #
+    #  DASHBOARD
+    # ------------------------------------------------------------------ #
     @app.route("/dashboard")
     @login_required
     def dashboard():
@@ -412,7 +429,12 @@ def create_app() -> Flask:
                 """,
                 {"provider_id": provider["provider_id"]},
             )
-            return render_template("dashboards/provider.html", provider=provider, bookings=bookings_for_provider, reviews=provider_reviews)
+            return render_template(
+                "dashboards/provider.html",
+                provider=provider,
+                bookings=bookings_for_provider,
+                reviews=provider_reviews,
+            )
 
         customer_bookings = query_all(
             """
@@ -425,8 +447,15 @@ def create_app() -> Flask:
             {"user_id": g.user["user_id"]},
         )
         recommendations = recommended_providers(g.user["user_id"])
-        return render_template("dashboards/customer.html", bookings=customer_bookings, recommendations=recommendations)
+        return render_template(
+            "dashboards/customer.html",
+            bookings=customer_bookings,
+            recommendations=recommendations,
+        )
 
+    # ------------------------------------------------------------------ #
+    #  PROFILE
+    # ------------------------------------------------------------------ #
     @app.route("/profile", methods=["GET", "POST"])
     @login_required
     def profile():
@@ -476,6 +505,9 @@ def create_app() -> Flask:
             return redirect(url_for("profile"))
         return render_template("profile.html", provider=provider)
 
+    # ------------------------------------------------------------------ #
+    #  PROVIDERS
+    # ------------------------------------------------------------------ #
     @app.route("/providers")
     def providers():
         filters = {
@@ -485,22 +517,22 @@ def create_app() -> Flask:
             "availability": request.args.get("availability", ""),
             "emergency": request.args.get("emergency", ""),
         }
-        where = ["verified = true"]
-        params = {}
+        where = ["p.verified = 1"]
+        params: dict = {}
         if filters["service_type"] in SERVICE_CATEGORIES:
-            where.append("service_type = :service_type")
+            where.append("p.service_type = :service_type")
             params["service_type"] = filters["service_type"]
         if filters["location"]:
-            where.append("(location LIKE :location OR address LIKE :location)")
+            where.append("(p.location LIKE :location OR p.address LIKE :location)")
             params["location"] = f"%{filters['location'][:80]}%"
         if filters["min_rating"]:
-            where.append("rating >= :min_rating")
+            where.append("p.rating >= :min_rating")
             params["min_rating"] = safe_float(filters["min_rating"], 0)
         if filters["availability"] in {"Available", "Busy"}:
-            where.append("availability = :availability")
+            where.append("p.availability = :availability")
             params["availability"] = filters["availability"]
         if filters["emergency"]:
-            where.append("emergency_enabled = true")
+            where.append("p.emergency_enabled = 1")
 
         provider_items = query_all(
             f"""
@@ -517,7 +549,10 @@ def create_app() -> Flask:
 
     @app.route("/providers/<int:provider_id>")
     def provider_detail(provider_id: int):
-        provider = query_one("SELECT * FROM service_providers WHERE provider_id = :provider_id", {"provider_id": provider_id})
+        provider = query_one(
+            "SELECT * FROM service_providers WHERE provider_id = :provider_id",
+            {"provider_id": provider_id},
+        )
         if not provider:
             abort(404)
         provider_reviews = query_all(
@@ -531,11 +566,14 @@ def create_app() -> Flask:
         )
         return render_template("providers/detail.html", provider=provider, reviews=provider_reviews)
 
+    # ------------------------------------------------------------------ #
+    #  BOOKINGS
+    # ------------------------------------------------------------------ #
     @app.route("/book/<int:provider_id>", methods=["GET", "POST"])
     @role_required("customer")
     def book(provider_id: int):
         provider = query_one(
-            "SELECT * FROM service_providers WHERE provider_id = :provider_id AND verified = true",
+            "SELECT * FROM service_providers WHERE provider_id = :provider_id AND verified = 1",
             {"provider_id": provider_id},
         )
         if not provider:
@@ -582,11 +620,17 @@ def create_app() -> Flask:
         status = request.form.get("status", "")
         if status not in {"Accepted", "Rejected", "Completed"}:
             abort(400)
-        execute_sql("UPDATE bookings SET status = :status WHERE booking_id = :booking_id", {"status": status, "booking_id": booking_id})
+        execute_sql(
+            "UPDATE bookings SET status = :status WHERE booking_id = :booking_id",
+            {"status": status, "booking_id": booking_id},
+        )
         add_notification(booking["user_id"], f"Booking #{booking_id} status updated to {status}.")
         flash("Booking status updated.", "success")
         return redirect(url_for("dashboard"))
 
+    # ------------------------------------------------------------------ #
+    #  PAYMENT
+    # ------------------------------------------------------------------ #
     @app.route("/booking/<int:booking_id>/payment", methods=["GET", "POST"])
     @login_required
     def payment(booking_id: int):
@@ -602,12 +646,15 @@ def create_app() -> Flask:
                             "price_data": {
                                 "currency": app.config["STRIPE_CURRENCY"],
                                 "unit_amount": int(float(booking["amount"]) * 100),
-                                "product_data": {"name": f"LocalConnect booking #{booking_id} - {booking['provider_name']}"},
+                                "product_data": {
+                                    "name": f"LocalConnect booking #{booking_id} - {booking['provider_name']}"
+                                },
                             },
                         }
                     ],
                     metadata={"booking_id": str(booking_id)},
-                    success_url=url_for("payment_success", booking_id=booking_id, _external=True) + "?session_id={CHECKOUT_SESSION_ID}",
+                    success_url=url_for("payment_success", booking_id=booking_id, _external=True)
+                    + "?session_id={CHECKOUT_SESSION_ID}",
                     cancel_url=url_for("payment", booking_id=booking_id, _external=True),
                 )
                 execute_sql(
@@ -644,6 +691,9 @@ def create_app() -> Flask:
             flash("Payment was not completed.", "warning")
         return redirect(url_for("dashboard"))
 
+    # ------------------------------------------------------------------ #
+    #  REVIEW
+    # ------------------------------------------------------------------ #
     @app.route("/booking/<int:booking_id>/review", methods=["GET", "POST"])
     @role_required("customer")
     def review(booking_id: int):
@@ -657,7 +707,10 @@ def create_app() -> Flask:
         )
         if not booking or booking["status"] != "Completed":
             abort(404)
-        existing = query_one("SELECT * FROM reviews WHERE booking_id = :booking_id", {"booking_id": booking_id})
+        existing = query_one(
+            "SELECT * FROM reviews WHERE booking_id = :booking_id",
+            {"booking_id": booking_id},
+        )
         if request.method == "POST":
             rating = int(request.form.get("rating", "0"))
             comment = request.form.get("comment", "").strip()
@@ -685,6 +738,9 @@ def create_app() -> Flask:
             return redirect(url_for("dashboard"))
         return render_template("bookings/review.html", booking=booking, existing=existing)
 
+    # ------------------------------------------------------------------ #
+    #  CHAT
+    # ------------------------------------------------------------------ #
     @app.route("/booking/<int:booking_id>/chat", methods=["GET", "POST"])
     @login_required
     def chat(booking_id: int):
@@ -692,8 +748,15 @@ def create_app() -> Flask:
         if request.method == "POST":
             body = request.form.get("body", "").strip()
             if 1 <= len(body) <= 1000:
-                execute_insert(messages, {"booking_id": booking_id, "sender_id": g.user["user_id"], "body": body})
-                other_user = booking["provider_user_id"] if g.user["role"] == "customer" else booking["user_id"]
+                execute_insert(
+                    messages,
+                    {"booking_id": booking_id, "sender_id": g.user["user_id"], "body": body},
+                )
+                other_user = (
+                    booking["provider_user_id"]
+                    if g.user["role"] == "customer"
+                    else booking["user_id"]
+                )
                 add_notification(other_user, f"New chat message on booking #{booking_id}.")
             return redirect(url_for("chat", booking_id=booking_id))
         chat_messages = query_all(
@@ -707,6 +770,9 @@ def create_app() -> Flask:
         )
         return render_template("bookings/chat.html", booking=booking, messages=chat_messages)
 
+    # ------------------------------------------------------------------ #
+    #  NOTIFICATIONS
+    # ------------------------------------------------------------------ #
     @app.route("/notifications", endpoint="notifications")
     @login_required
     def notifications_view():
@@ -714,9 +780,15 @@ def create_app() -> Flask:
             "SELECT * FROM notifications WHERE user_id = :user_id ORDER BY created_at DESC",
             {"user_id": g.user["user_id"]},
         )
-        execute_sql("UPDATE notifications SET is_read = true WHERE user_id = :user_id", {"user_id": g.user["user_id"]})
+        execute_sql(
+            "UPDATE notifications SET is_read = 1 WHERE user_id = :user_id",
+            {"user_id": g.user["user_id"]},
+        )
         return render_template("notifications.html", notifications=items)
 
+    # ------------------------------------------------------------------ #
+    #  REPORT
+    # ------------------------------------------------------------------ #
     @app.route("/report/<int:provider_id>", methods=["POST"])
     @role_required("customer")
     def report_provider(provider_id: int):
@@ -724,16 +796,26 @@ def create_app() -> Flask:
         if len(reason) < 10:
             flash("Please include a clear reason for reporting the listing.", "danger")
             return redirect(url_for("provider_detail", provider_id=provider_id))
-        execute_insert(reports, {"provider_id": provider_id, "user_id": g.user["user_id"], "reason": reason[:1000]})
+        execute_insert(
+            reports,
+            {"provider_id": provider_id, "user_id": g.user["user_id"], "reason": reason[:1000]},
+        )
         notify_admins(f"New fake listing report for provider #{provider_id}.")
         flash("Report submitted for admin review.", "success")
         return redirect(url_for("provider_detail", provider_id=provider_id))
 
+    # ------------------------------------------------------------------ #
+    #  ADMIN
+    # ------------------------------------------------------------------ #
     @app.route("/admin")
     @admin_required
     def admin_dashboard():
-        pending = query_all("SELECT * FROM service_providers WHERE verified = false ORDER BY created_at DESC")
-        all_users = query_all("SELECT user_id, name, email, role, location, is_active FROM users ORDER BY created_at DESC")
+        pending = query_all(
+            "SELECT * FROM service_providers WHERE verified = 0 ORDER BY created_at DESC"
+        )
+        all_users = query_all(
+            "SELECT user_id, name, email, role, location, is_active FROM users ORDER BY created_at DESC"
+        )
         report_rows = query_all(
             """
             SELECT r.*, p.name AS provider_name, u.name AS reporter_name
@@ -752,29 +834,48 @@ def create_app() -> Flask:
             """
         )
         metrics = {
-            "users": query_one("SELECT COUNT(*) AS total FROM users")["total"],
-            "providers": query_one("SELECT COUNT(*) AS total FROM service_providers")["total"],
-            "pending": len(pending),
-            "bookings": query_one("SELECT COUNT(*) AS total FROM bookings")["total"],
+            "users":     (query_one("SELECT COUNT(*) AS total FROM users") or {}).get("total", 0),
+            "providers": (query_one("SELECT COUNT(*) AS total FROM service_providers") or {}).get("total", 0),
+            "pending":   len(pending),
+            "bookings":  (query_one("SELECT COUNT(*) AS total FROM bookings") or {}).get("total", 0),
         }
-        return render_template("dashboards/admin.html", pending=pending, users=all_users, reports=report_rows, metrics=metrics, audits=audits)
+        return render_template(
+            "dashboards/admin.html",
+            pending=pending,
+            users=all_users,
+            reports=report_rows,
+            metrics=metrics,
+            audits=audits,
+        )
 
     @app.route("/admin/provider/<int:provider_id>/<action>", methods=["POST"])
     @admin_required
     def admin_provider_action(provider_id: int, action: str):
-        provider = query_one("SELECT * FROM service_providers WHERE provider_id = :provider_id", {"provider_id": provider_id})
+        provider = query_one(
+            "SELECT * FROM service_providers WHERE provider_id = :provider_id",
+            {"provider_id": provider_id},
+        )
         if not provider:
             abort(404)
         if provider["user_id"] == g.user["user_id"]:
             abort(403)
         if action == "approve":
-            execute_sql("UPDATE service_providers SET verified = true WHERE provider_id = :provider_id", {"provider_id": provider_id})
+            execute_sql(
+                "UPDATE service_providers SET verified = 1 WHERE provider_id = :provider_id",
+                {"provider_id": provider_id},
+            )
             add_notification(provider["user_id"], "Your provider profile has been approved.")
             log_admin_action("approve_provider", "provider", provider_id, provider["name"])
             flash("Provider approved.", "success")
         elif action == "remove":
-            execute_sql("UPDATE users SET is_active = false WHERE user_id = :user_id", {"user_id": provider["user_id"]})
-            execute_sql("UPDATE service_providers SET verified = false WHERE provider_id = :provider_id", {"provider_id": provider_id})
+            execute_sql(
+                "UPDATE users SET is_active = 0 WHERE user_id = :user_id",
+                {"user_id": provider["user_id"]},
+            )
+            execute_sql(
+                "UPDATE service_providers SET verified = 0 WHERE provider_id = :provider_id",
+                {"provider_id": provider_id},
+            )
             log_admin_action("remove_provider", "provider", provider_id, provider["name"])
             flash("Listing removed and linked user deactivated.", "warning")
         else:
@@ -789,13 +890,15 @@ def create_app() -> Flask:
     return app
 
 
+# ------------------------------------------------------------------ #
+#  DB HELPERS
+# ------------------------------------------------------------------ #
 def get_engine() -> Engine:
     return current_app_engine()
 
 
 def current_app_engine() -> Engine:
     from flask import current_app
-
     return current_app.engine
 
 
@@ -831,14 +934,14 @@ def seed_data(engine: Engine) -> None:
         if conn.execute(select(func.count()).select_from(users)).scalar_one() > 0:
             return
         seed_users = [
-            ("Admin User", "admin@localconnect.test", "admin123", "admin", "9000000000", "Central"),
-            ("Meera Customer", "customer@localconnect.test", "customer123", "customer", "9000000001", "Indiranagar"),
-            ("Ravi Electric Works", "provider@localconnect.test", "provider123", "provider", "9000000002", "Indiranagar"),
-            ("Asha Plumbing Care", "asha@localconnect.test", "provider123", "provider", "9000000003", "Koramangala"),
-            ("CleanNest Team", "clean@localconnect.test", "provider123", "provider", "9000000004", "Whitefield"),
-            ("Bright Tutors", "tutor@localconnect.test", "provider123", "provider", "9000000005", "Jayanagar"),
+            ("Admin User",        "admin@localconnect.test",    "admin123",    "admin",    "9000000000", "Central"),
+            ("Meera Customer",    "customer@localconnect.test", "customer123", "customer", "9000000001", "Indiranagar"),
+            ("Ravi Electric Works","provider@localconnect.test","provider123", "provider", "9000000002", "Indiranagar"),
+            ("Asha Plumbing Care","asha@localconnect.test",     "provider123", "provider", "9000000003", "Koramangala"),
+            ("CleanNest Team",    "clean@localconnect.test",    "provider123", "provider", "9000000004", "Whitefield"),
+            ("Bright Tutors",     "tutor@localconnect.test",    "provider123", "provider", "9000000005", "Jayanagar"),
         ]
-        ids = {}
+        ids: dict = {}
         for name, email, password, role, phone, location in seed_users:
             result = conn.execute(
                 users.insert().values(
@@ -853,30 +956,20 @@ def seed_data(engine: Engine) -> None:
             )
             ids[email] = result.inserted_primary_key[0]
 
-        seed_providers = [
-            (ids["provider@localconnect.test"], "Ravi Electric Works", "Electrician", "9000000002", "12 CMH Road, Indiranagar", "Indiranagar", 4.8, "Available", True, 650, "Certified electrician for wiring, switchboards, inverter setup, and urgent power faults.", 12.9784, 77.6408, True),
-            (ids["asha@localconnect.test"], "Asha Plumbing Care", "Plumber", "9000000003", "5th Block, Koramangala", "Koramangala", 4.6, "Available", True, 550, "Leak repair, bathroom fittings, water heater lines, and scheduled maintenance.", 12.9352, 77.6245, True),
-            (ids["clean@localconnect.test"], "CleanNest Team", "House Cleaner", "9000000004", "Hope Farm Junction, Whitefield", "Whitefield", 4.4, "Busy", True, 900, "Deep cleaning, kitchen cleaning, moving-in cleaning, and recurring home care.", 12.9698, 77.7499, False),
-            (ids["tutor@localconnect.test"], "Bright Tutors", "Tutor", "9000000005", "4th T Block, Jayanagar", "Jayanagar", 4.9, "Available", True, 700, "Math, science, and computer basics tutoring for school students.", 12.9250, 77.5938, False),
+        seed_providers_data = [
+            (ids["provider@localconnect.test"], "Ravi Electric Works", "Electrician",  "9000000002", "12 CMH Road, Indiranagar", "Indiranagar", 4.8, "Available", True,  650, "Certified electrician for wiring, switchboards, inverter setup, and urgent power faults.", 12.9784, 77.6408, True),
+            (ids["asha@localconnect.test"],     "Asha Plumbing Care",  "Plumber",      "9000000003", "5th Block, Koramangala",   "Koramangala", 4.6, "Available", True,  550, "Leak repair, bathroom fittings, water heater lines, and scheduled maintenance.",            12.9352, 77.6245, True),
+            (ids["clean@localconnect.test"],    "CleanNest Team",      "House Cleaner","9000000004", "Hope Farm Junction, Whitefield","Whitefield",4.4,"Busy",    True,  900, "Deep cleaning, kitchen cleaning, moving-in cleaning, and recurring home care.",             12.9698, 77.7499, False),
+            (ids["tutor@localconnect.test"],    "Bright Tutors",       "Tutor",        "9000000005", "4th T Block, Jayanagar",   "Jayanagar",   4.9, "Available", True,  700, "Math, science, and computer basics tutoring for school students.",                          12.9250, 77.5938, False),
         ]
-        provider_ids = []
-        for row in seed_providers:
+        provider_ids: list[int] = []
+        for row in seed_providers_data:
             result = conn.execute(
                 service_providers.insert().values(
-                    user_id=row[0],
-                    name=row[1],
-                    service_type=row[2],
-                    phone=row[3],
-                    address=row[4],
-                    location=row[5],
-                    rating=row[6],
-                    availability=row[7],
-                    verified=row[8],
-                    price=row[9],
-                    bio=row[10],
-                    latitude=row[11],
-                    longitude=row[12],
-                    emergency_enabled=row[13],
+                    user_id=row[0], name=row[1], service_type=row[2], phone=row[3],
+                    address=row[4], location=row[5], rating=row[6], availability=row[7],
+                    verified=row[8], price=row[9], bio=row[10],
+                    latitude=row[11], longitude=row[12], emergency_enabled=row[13],
                 )
             )
             provider_ids.append(result.inserted_primary_key[0])
@@ -885,15 +978,10 @@ def seed_data(engine: Engine) -> None:
             bookings.insert().values(
                 user_id=ids["customer@localconnect.test"],
                 provider_id=provider_ids[0],
-                date="2026-06-05",
-                time="10:30",
-                status="Completed",
+                date="2026-06-05", time="10:30", status="Completed",
                 notes="Fan replacement and switchboard check",
-                emergency=False,
-                amount=650,
-                payment_status="Paid",
-                payment_provider="demo",
-                payment_reference="seed-demo",
+                emergency=False, amount=650,
+                payment_status="Paid", payment_provider="demo", payment_reference="seed-demo",
             )
         )
         booking_id = booking_result.inserted_primary_key[0]
@@ -911,6 +999,9 @@ def seed_data(engine: Engine) -> None:
         conn.execute(notifications.insert().values(user_id=ids["customer@localconnect.test"], message="Your last booking was completed. Please rate the provider."))
 
 
+# ------------------------------------------------------------------ #
+#  DECORATORS
+# ------------------------------------------------------------------ #
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -918,7 +1009,6 @@ def login_required(view):
             flash("Please log in to continue.", "warning")
             return redirect(url_for("login"))
         return view(*args, **kwargs)
-
     return wrapped
 
 
@@ -932,9 +1022,7 @@ def role_required(role: str):
             if g.user["role"] != role:
                 abort(403)
             return view(*args, **kwargs)
-
         return wrapped
-
     return decorator
 
 
@@ -947,12 +1035,17 @@ def admin_required(view):
         if g.user["role"] != "admin" or not g.user["is_active"]:
             abort(403)
         return view(*args, **kwargs)
-
     return wrapped
 
 
+# ------------------------------------------------------------------ #
+#  HELPERS
+# ------------------------------------------------------------------ #
 def provider_for_user(user_id: int):
-    provider = query_one("SELECT * FROM service_providers WHERE user_id = :user_id", {"user_id": user_id})
+    provider = query_one(
+        "SELECT * FROM service_providers WHERE user_id = :user_id",
+        {"user_id": user_id},
+    )
     if not provider:
         abort(404)
     return provider
@@ -986,7 +1079,7 @@ def add_notification(user_id: int, message: str) -> None:
 
 
 def notify_admins(message: str) -> None:
-    for admin in query_all("SELECT user_id FROM users WHERE role = 'admin' AND is_active = true"):
+    for admin in query_all("SELECT user_id FROM users WHERE role = 'admin' AND is_active = 1"):
         add_notification(admin["user_id"], message)
 
 
@@ -1004,8 +1097,17 @@ def log_admin_action(action: str, target_type: str, target_id: int, details: str
 
 
 def refresh_provider_rating(provider_id: int) -> None:
-    avg = query_one("SELECT AVG(rating) AS rating FROM reviews WHERE provider_id = :provider_id", {"provider_id": provider_id})["rating"] or 0
-    execute_sql("UPDATE service_providers SET rating = :rating WHERE provider_id = :provider_id", {"rating": round(avg, 1), "provider_id": provider_id})
+    avg = (
+        query_one(
+            "SELECT AVG(rating) AS rating FROM reviews WHERE provider_id = :provider_id",
+            {"provider_id": provider_id},
+        )["rating"]
+        or 0
+    )
+    execute_sql(
+        "UPDATE service_providers SET rating = :rating WHERE provider_id = :provider_id",
+        {"rating": round(avg, 1), "provider_id": provider_id},
+    )
 
 
 def recommended_providers(user_id: int):
@@ -1019,21 +1121,22 @@ def recommended_providers(user_id: int):
     )
     liked_services = {row["service_type"] for row in history}
     liked_locations = {row["location"] for row in history}
-    provider_rows = query_all("SELECT * FROM service_providers WHERE verified = true ORDER BY rating DESC")
-
+    provider_rows = query_all(
+        "SELECT * FROM service_providers WHERE verified = 1 ORDER BY rating DESC"
+    )
     scored = []
-    for provider in provider_rows:
-        score = provider["rating"] * 10
-        if provider["service_type"] in liked_services:
+    for p in provider_rows:
+        score = p["rating"] * 10
+        if p["service_type"] in liked_services:
             score += 12
-        if provider["location"] in liked_locations:
+        if p["location"] in liked_locations:
             score += 8
-        if provider["availability"] == "Available":
+        if p["availability"] == "Available":
             score += 5
-        if provider["emergency_enabled"]:
+        if p["emergency_enabled"]:
             score += 3
-        scored.append((score, provider))
-    return [provider for _, provider in sorted(scored, key=lambda item: item[0], reverse=True)[:4]]
+        scored.append((score, p))
+    return [p for _, p in sorted(scored, key=lambda x: x[0], reverse=True)[:4]]
 
 
 def mark_booking_paid(booking, provider: str, reference: str) -> None:
@@ -1051,7 +1154,6 @@ def mark_booking_paid(booking, provider: str, reference: str) -> None:
 
 def send_email(to_email: str, subject: str, body: str) -> bool:
     from flask import current_app
-
     if not current_app.config["MAIL_HOST"]:
         return False
     msg = EmailMessage()
@@ -1071,7 +1173,7 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
 
 
 def clean_form(form) -> dict:
-    return {key: value.strip() if isinstance(value, str) else value for key, value in form.items()}
+    return {k: v.strip() if isinstance(v, str) else v for k, v in form.items()}
 
 
 def validate_registration(form: dict, role: str) -> list[str]:
@@ -1129,7 +1231,11 @@ def validate_email(email: str) -> bool:
 
 
 def validate_password(password: str) -> bool:
-    return len(password or "") >= 8 and bool(re.search(r"[A-Za-z]", password)) and bool(re.search(r"\d", password))
+    return (
+        len(password or "") >= 8
+        and bool(re.search(r"[A-Za-z]", password))
+        and bool(re.search(r"\d", password))
+    )
 
 
 def safe_float(value, default: float) -> float:
@@ -1144,7 +1250,6 @@ def utcnow() -> datetime:
 
 
 app = create_app()
-
 
 if __name__ == "__main__":
     app.run(debug=True)
