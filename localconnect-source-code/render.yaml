@@ -4,6 +4,7 @@ services:
     runtime: python
     plan: free
     region: singapore
+    rootDir: localconnect-source-code
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
