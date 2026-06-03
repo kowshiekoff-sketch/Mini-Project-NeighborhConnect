@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Chat - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-body p-4">
+          <p class="eyebrow">Booking chat</p>
+          <h1 class="h4">Booking #{{ booking.booking_id }} - {{ booking.provider_name }}</h1>
+          <div class="chat-window my-3">
+            {% for message in messages %}
+              <div class="chat-bubble {% if message.sender_id == g.user.user_id %}mine{% endif %}">
+                <strong>{{ message.sender_name }}</strong>
+                <p>{{ message.body }}</p>
+                <span>{{ message.created_at }}</span>
+              </div>
+            {% else %}
+              <p class="text-muted">No messages yet.</p>
+            {% endfor %}
+          </div>
+          <form method="post" class="d-flex gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input class="form-control" name="body" placeholder="Type a message" required>
+            <button class="btn btn-primary">Send</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

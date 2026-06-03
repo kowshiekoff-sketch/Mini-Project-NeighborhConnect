@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Password Reset - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body p-4">
+          <h1 class="h3 mb-3">Password Reset</h1>
+          <form method="post" class="vstack gap-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div>
+              <label class="form-label">Registered email</label>
+              <input class="form-control" type="email" name="email" value="{{ email or '' }}" required>
+            </div>
+            <div>
+              <label class="form-label">OTP</label>
+              <input class="form-control" name="otp" inputmode="numeric" placeholder="Enter OTP after requesting it">
+            </div>
+            <div>
+              <label class="form-label">New Password</label>
+              <input class="form-control" type="password" name="new_password" placeholder="At least 8 chars with letters and numbers">
+            </div>
+            <button class="btn btn-primary">Send OTP / Reset Password</button>
+          </form>
+          {% if demo_code %}
+            <div class="alert alert-info mt-3">SMTP is not configured, so the demo OTP is: <strong>{{ demo_code }}</strong></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

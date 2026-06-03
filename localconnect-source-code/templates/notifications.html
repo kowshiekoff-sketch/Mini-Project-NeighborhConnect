@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Notifications - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-4">
+  <div class="mb-3">
+    <p class="eyebrow">Notifications</p>
+    <h1 class="h3 mb-0">Service updates</h1>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      {% for notification in notifications %}
+        <div class="notification-row {% if not notification.is_read %}unread{% endif %}">
+          <p>{{ notification.message }}</p>
+          <span>{{ notification.created_at }}</span>
+        </div>
+      {% else %}
+        <p class="text-muted mb-0">No notifications.</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

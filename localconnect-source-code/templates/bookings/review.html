@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Review - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body p-4">
+          <h1 class="h3">Rate {{ booking.provider_name }}</h1>
+          <form method="post" class="vstack gap-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div>
+              <label class="form-label">Rating</label>
+              <select class="form-select" name="rating" required>
+                {% for rating in [5,4,3,2,1] %}
+                  <option value="{{ rating }}" {% if existing and existing.rating == rating %}selected{% endif %}>{{ rating }} star</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Comment</label>
+              <textarea class="form-control" name="comment" rows="4" required>{% if existing %}{{ existing.comment }}{% endif %}</textarea>
+            </div>
+            <button class="btn btn-primary">Save Review</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

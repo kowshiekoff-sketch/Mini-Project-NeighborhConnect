@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: localconnect
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOW_DEMO_PAYMENTS
+        value: "false"
+      - key: STRIPE_CURRENCY
+        value: inr

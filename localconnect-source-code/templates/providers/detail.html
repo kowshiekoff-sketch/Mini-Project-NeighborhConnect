@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ provider.name }} - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-4">
+  <div class="row g-4">
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between gap-3">
+            <div>
+              <span class="badge text-bg-light border">{{ provider.service_type }}</span>
+              {% if provider.verified %}<span class="badge text-bg-success">Verified</span>{% endif %}
+              {% if provider.emergency_enabled %}<span class="badge text-bg-danger">Emergency</span>{% endif %}
+            </div>
+            <span class="rating">{{ "%.1f"|format(provider.rating) }} / 5</span>
+          </div>
+          <h1 class="h3 mt-3">{{ provider.name }}</h1>
+          <p class="text-muted">{{ provider.bio }}</p>
+          <dl class="row">
+            <dt class="col-sm-3">Phone</dt><dd class="col-sm-9">{{ provider.phone }}</dd>
+            <dt class="col-sm-3">Address</dt><dd class="col-sm-9">{{ provider.address }}</dd>
+            <dt class="col-sm-3">Location</dt><dd class="col-sm-9">{{ provider.location }}</dd>
+            <dt class="col-sm-3">Availability</dt><dd class="col-sm-9">{{ provider.availability }}</dd>
+            <dt class="col-sm-3">Base Price</dt><dd class="col-sm-9">Rs. {{ "%.0f"|format(provider.price) }}</dd>
+          </dl>
+          <div class="d-flex flex-wrap gap-2">
+            {% if g.user and g.user.role == 'customer' %}
+              <a class="btn btn-primary" href="{{ url_for('book', provider_id=provider.provider_id) }}">Book Service</a>
+            {% elif not g.user %}
+              <a class="btn btn-primary" href="{{ url_for('login') }}">Login to Book</a>
+            {% endif %}
+            <a class="btn btn-outline-dark" target="_blank" href="https://www.google.com/maps/search/?api=1&query={{ provider.latitude }},{{ provider.longitude }}">Open Map</a>
+          </div>
+        </div>
+      </div>
+      <div class="map-panel mt-3" data-lat="{{ provider.latitude }}" data-lng="{{ provider.longitude }}">
+        <div class="pin"></div>
+        <div>
+          <strong>{{ provider.location }}</strong>
+          <span>{{ provider.latitude }}, {{ provider.longitude }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h2 class="h5">Reviews</h2>
+          {% for review in reviews %}
+            <div class="review-item">
+              <strong>{{ review.customer_name }}</strong>
+              <span class="rating">{{ review.rating }} / 5</span>
+              <p>{{ review.comment }}</p>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No reviews yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+      {% if g.user and g.user.role == 'customer' %}
+        <div class="card">
+          <div class="card-body">
+            <h2 class="h5">Report listing</h2>
+            <form method="post" action="{{ url_for('report_provider', provider_id=provider.provider_id) }}" class="vstack gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <textarea class="form-control" name="reason" rows="3" placeholder="Reason for reporting" required></textarea>
+              <button class="btn btn-outline-danger">Submit Report</button>
+            </form>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

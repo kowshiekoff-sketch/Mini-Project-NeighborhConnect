@@ -1,0 +1,24 @@
+<div class="col-md-6 col-xl-4">
+  <article class="card provider-card h-100">
+    <div class="card-body">
+      <div class="d-flex justify-content-between gap-3">
+        <div>
+          <span class="badge text-bg-light border">{{ provider.service_type }}</span>
+          {% if provider.emergency_enabled %}
+            <span class="badge text-bg-danger">Emergency</span>
+          {% endif %}
+        </div>
+        <span class="rating">{{ "%.1f"|format(provider.rating) }} / 5</span>
+      </div>
+      <h3 class="h5 mt-3">{{ provider.name }}</h3>
+      <p class="text-muted mb-2">{{ provider.bio }}</p>
+      <div class="small text-muted">{{ provider.location }} | {{ provider.availability }} | Rs. {{ "%.0f"|format(provider.price) }}</div>
+    </div>
+    <div class="card-footer bg-white d-flex gap-2">
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('provider_detail', provider_id=provider.provider_id) }}">Details</a>
+      {% if g.user and g.user.role == 'customer' %}
+        <a class="btn btn-sm btn-primary" href="{{ url_for('book', provider_id=provider.provider_id) }}">Book</a>
+      {% endif %}
+    </div>
+  </article>
+</div>

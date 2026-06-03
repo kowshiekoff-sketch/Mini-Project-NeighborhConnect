@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Provider Dashboard - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
+    <div>
+      <p class="eyebrow">Service provider dashboard</p>
+      <h1 class="h3 mb-0">{{ provider.name }}</h1>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('profile') }}">Update Profile</a>
+  </div>
+
+  {% if not provider.verified %}
+    <div class="alert alert-warning">Your provider profile is waiting for admin approval.</div>
+  {% endif %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="metric"><strong>{{ "%.1f"|format(provider.rating) }}</strong><span>Rating</span></div></div>
+    <div class="col-md-3"><div class="metric"><strong>{{ provider.availability }}</strong><span>Availability</span></div></div>
+    <div class="col-md-3"><div class="metric"><strong>Rs. {{ "%.0f"|format(provider.price) }}</strong><span>Base price</span></div></div>
+    <div class="col-md-3"><div class="metric"><strong>{{ "Yes" if provider.emergency_enabled else "No" }}</strong><span>Emergency</span></div></div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">Booking requests</h2>
+          <div class="table-responsive">
+            <table class="table align-middle">
+              <thead><tr><th>Customer</th><th>Date</th><th>Status</th><th>Payment</th><th></th></tr></thead>
+              <tbody>
+                {% for booking in bookings %}
+                  <tr>
+                    <td>
+                      <strong>{{ booking.customer_name }}</strong><br>
+                      <span class="small text-muted">{{ booking.customer_phone }}</span>
+                    </td>
+                    <td>{{ booking.date }} {{ booking.time }}{% if booking.emergency %}<span class="badge text-bg-danger ms-1">Emergency</span>{% endif %}</td>
+                    <td><span class="status-pill">{{ booking.status }}</span></td>
+                    <td>{{ booking.payment_status }}</td>
+                    <td class="text-end">
+                      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('chat', booking_id=booking.booking_id) }}">Chat</a>
+                      <form method="post" action="{{ url_for('update_booking_status', booking_id=booking.booking_id) }}" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="status" value="Accepted">
+                        <button class="btn btn-sm btn-outline-success">Accept</button>
+                      </form>
+                      <form method="post" action="{{ url_for('update_booking_status', booking_id=booking.booking_id) }}" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="status" value="Rejected">
+                        <button class="btn btn-sm btn-outline-danger">Reject</button>
+                      </form>
+                      <form method="post" action="{{ url_for('update_booking_status', booking_id=booking.booking_id) }}" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="status" value="Completed">
+                        <button class="btn btn-sm btn-primary">Complete</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5" class="text-muted">No bookings yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">Ratings</h2>
+          {% for review in reviews %}
+            <div class="review-item">
+              <strong>{{ review.customer_name }}</strong>
+              <span class="rating">{{ review.rating }} / 5</span>
+              <p>{{ review.comment }}</p>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No ratings yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

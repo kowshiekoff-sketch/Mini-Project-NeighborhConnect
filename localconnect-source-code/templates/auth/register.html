@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Register - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-body p-4">
+          <h1 class="h3 mb-3">Create Account</h1>
+          <form method="post" class="row g-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-md-6">
+              <label class="form-label">Name</label>
+              <input class="form-control" name="name" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Email</label>
+              <input class="form-control" type="email" name="email" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Password</label>
+              <input class="form-control" type="password" name="password" required minlength="6">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Role</label>
+              <select class="form-select" name="role" id="roleSelect">
+                <option value="customer">Customer</option>
+                <option value="provider">Service Provider</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Phone</label>
+              <input class="form-control" name="phone">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Location</label>
+              <input class="form-control" name="location" placeholder="Indiranagar">
+            </div>
+            <div class="col-md-6 provider-only d-none">
+              <label class="form-label">Service Type</label>
+              <select class="form-select" name="service_type">
+                {% for category in categories %}
+                  <option>{{ category }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6 admin-only d-none">
+              <label class="form-label">Admin Registration Key</label>
+              <input class="form-control" name="admin_key" placeholder="Required for admin accounts">
+            </div>
+            <div class="col-12">
+              <button class="btn btn-primary">Register</button>
+              <a class="btn btn-link" href="{{ url_for('login') }}">Already registered?</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

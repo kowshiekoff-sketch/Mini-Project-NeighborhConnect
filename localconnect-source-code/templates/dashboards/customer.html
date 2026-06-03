@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Customer Dashboard - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-4">
+  <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
+    <div>
+      <p class="eyebrow">Customer dashboard</p>
+      <h1 class="h3 mb-0">Bookings and recommendations</h1>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('providers') }}">Search Services</a>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">Booking history</h2>
+          <div class="table-responsive">
+            <table class="table align-middle">
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Payment</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for booking in bookings %}
+                  <tr>
+                    <td>
+                      <strong>{{ booking.provider_name }}</strong><br>
+                      <span class="small text-muted">{{ booking.service_type }}</span>
+                    </td>
+                    <td>{{ booking.date }} {{ booking.time }}</td>
+                    <td><span class="status-pill">{{ booking.status }}</span></td>
+                    <td>{{ booking.payment_status }}</td>
+                    <td class="text-end">
+                      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('chat', booking_id=booking.booking_id) }}">Chat</a>
+                      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('payment', booking_id=booking.booking_id) }}">Pay</a>
+                      {% if booking.status == 'Completed' %}
+                        <a class="btn btn-sm btn-primary" href="{{ url_for('review', booking_id=booking.booking_id) }}">Review</a>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5" class="text-muted">No bookings yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">Recommended for you</h2>
+          {% for provider in recommendations %}
+            <div class="mini-provider">
+              <strong>{{ provider.name }}</strong>
+              <span>{{ provider.service_type }} | {{ provider.location }}</span>
+              <a href="{{ url_for('provider_detail', provider_id=provider.provider_id) }}">View</a>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

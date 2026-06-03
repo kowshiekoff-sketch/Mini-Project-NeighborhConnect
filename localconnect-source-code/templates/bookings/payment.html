@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Payment - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-5">
+  <div class="row justify-content-center align-items-center g-4">
+    <div class="col-md-5">
+      <div class="qr-box">
+        <div class="qr-grid" aria-label="Demo QR payment pattern">
+          {% for i in range(81) %}
+            <span class="{% if i in [0,1,2,9,18,19,20,6,7,8,15,24,25,26,54,55,56,63,72,73,74,60,61,62,69,78,79,80,32,40,48,12,28,36,44,52,68] %}dark{% endif %}"></span>
+          {% endfor %}
+        </div>
+        <strong>UPI Demo QR</strong>
+        <span>localconnect@upi</span>
+      </div>
+    </div>
+    <div class="col-md-5">
+      <div class="card">
+        <div class="card-body p-4">
+          <p class="eyebrow">Digital payment</p>
+          <h1 class="h3">Booking #{{ booking.booking_id }}</h1>
+          <p class="text-muted">{{ booking.provider_name }} | {{ booking.service_type }}</p>
+          <div class="summary-line"><span>Amount</span><strong>Rs. {{ "%.0f"|format(booking.amount) }}</strong></div>
+          <div class="summary-line"><span>Status</span><strong>{{ booking.payment_status }}</strong></div>
+          <form method="post" class="mt-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if stripe_enabled %}
+              <button class="btn btn-primary" name="provider" value="stripe">Pay with Stripe</button>
+            {% endif %}
+            {% if demo_payments_enabled %}
+              <button class="btn btn-outline-primary" name="provider" value="demo">Mark Paid Demo</button>
+            {% endif %}
+            <a class="btn btn-link" href="{{ url_for('dashboard') }}">Dashboard</a>
+          </form>
+          {% if not stripe_enabled %}
+            <p class="small text-muted mt-3 mb-0">Set STRIPE_SECRET_KEY to enable production online payments.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

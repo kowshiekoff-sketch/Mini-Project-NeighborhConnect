@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard - LocalConnect{% endblock %}
+{% block content %}
+<section class="container py-4">
+  <div class="mb-4">
+    <p class="eyebrow">Admin dashboard</p>
+    <h1 class="h3 mb-0">Manage platform</h1>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="metric"><strong>{{ metrics.users }}</strong><span>Users</span></div></div>
+    <div class="col-md-3"><div class="metric"><strong>{{ metrics.providers }}</strong><span>Providers</span></div></div>
+    <div class="col-md-3"><div class="metric"><strong>{{ metrics.pending }}</strong><span>Pending approvals</span></div></div>
+    <div class="col-md-3"><div class="metric"><strong>{{ metrics.bookings }}</strong><span>Bookings</span></div></div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">Approve providers</h2>
+          {% for provider in pending %}
+            <div class="admin-row">
+              <div>
+                <strong>{{ provider.name }}</strong>
+                <span>{{ provider.service_type }} | {{ provider.location }}</span>
+              </div>
+              <form method="post" action="{{ url_for('admin_provider_action', provider_id=provider.provider_id, action='approve') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-success">Approve</button>
+              </form>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No pending providers.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">Reports</h2>
+          {% for report in reports %}
+            <div class="admin-row">
+              <div>
+                <strong>{{ report.provider_name }}</strong>
+                <span>{{ report.reason }} | by {{ report.reporter_name }}</span>
+              </div>
+              <form method="post" action="{{ url_for('admin_provider_action', provider_id=report.provider_id, action='remove') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-danger">Remove Listing</button>
+              </form>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No reports.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">Users</h2>
+          <div class="table-responsive">
+            <table class="table align-middle">
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Location</th><th>Status</th></tr></thead>
+              <tbody>
+                {% for user in users %}
+                  <tr>
+                    <td>{{ user.name }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ user.role|title }}</td>
+                    <td>{{ user.location }}</td>
+                    <td>{{ "Active" if user.is_active else "Inactive" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h5">Recent admin audit log</h2>
+          <div class="table-responsive">
+            <table class="table align-middle">
+              <thead><tr><th>Admin</th><th>Action</th><th>Target</th><th>Details</th><th>Date</th></tr></thead>
+              <tbody>
+                {% for audit in audits %}
+                  <tr>
+                    <td>{{ audit.admin_name }}</td>
+                    <td>{{ audit.action }}</td>
+                    <td>{{ audit.target_type }} #{{ audit.target_id }}</td>
+                    <td>{{ audit.details }}</td>
+                    <td>{{ audit.created_at }}</td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5" class="text-muted">No admin actions yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
